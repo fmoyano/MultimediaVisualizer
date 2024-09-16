@@ -1,3 +1,4 @@
+#include <stdint.h>
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <wingdi.h>
@@ -8,39 +9,36 @@ static HWND window = 0;
 static BITMAPINFO bmInfo = {0};
 static void *bitmap_memory;
 static HBITMAP bitmap_handle;
+static HDC device_context;
 
 typedef struct WindowSize
 {
-	unsigned width;
-	unsigned height;
+	int width;
+	int height;
 } WindowSize;
 
-//Allocate a back buffer (DIB Section)
-static void InitOrResizeDIBSection(unsigned width, unsigned height)
-{
-	if (bitmap_handle)
+typedef unsigned char uchar;
+
+//Allocate a back buffer
+static void InitOrResizeDIBSection(int width, int height)
+{	
+	if (bitmap_memory)
 	{
-		DeleteObject(bitmap_handle);
+		VirtualFree(bitmap_memory, 0, MEM_RELEASE);
 	}
 
 	BITMAPINFOHEADER bmHeader = {0};
 	bmHeader.biSize = sizeof(BITMAPINFOHEADER);
 	bmHeader.biWidth = width;
-	bmHeader.biHeight = height;
+	bmHeader.biHeight = -height; //top-down bitmap (origin is on the top-left corner)
 	bmHeader.biPlanes = 1;
 	bmHeader.biBitCount = 32;
 	bmHeader.biCompression = BI_RGB;
-
 	bmInfo.bmiHeader = bmHeader;
 
-	HDC device_context = CreateCompatibleDC(0);
-	bitmap_handle = CreateDIBSection(
-  		device_context,
-  		&bmInfo,
-  		DIB_RGB_COLORS,
-  		&bitmap_memory,
-  		0, 0);
-	DeleteDC(device_context);
+	unsigned bytes_per_pixel = 4;
+	size_t memory_size = bytes_per_pixel * width * height;
+	bitmap_memory = VirtualAlloc(0, memory_size, MEM_COMMIT, PAGE_READWRITE);
 }
 
 static WindowSize GetWindowSize()
@@ -120,14 +118,23 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 		TranslateMessage(&msg);
 		DispatchMessage(&msg);
 
-		//TODO: fill in (how to get device context?)
-		/*StretchDIBits(0, //device context
+		for (int row = 0; row < wSize.height; ++row)
+		{
+			for (int col = 0; col < wSize.width; ++col)
+			{
+				uint32_t *pixel = (uint32_t*)bitmap_memory;	
+				*pixel = 0x00000000;
+				++pixel;
+			}			
+		}
+
+		StretchDIBits(device_context, //device context
 			0, 0, wSize.width, wSize.height, //destination
 			0, 0, wSize.width, wSize.height, //source
-			const void *lpBits, //image data as bytes
-			const BITMAPINFO *lpbmi, // BITMAP INFO
+			bitmap_memory,
+			&bmInfo, // BITMAP INFO
 			DIB_RGB_COLORS,
-			SRCCOPY);*/
+			SRCCOPY);
 	}
 
 	if (console_enabled)
