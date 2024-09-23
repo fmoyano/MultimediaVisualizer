@@ -1,9 +1,9 @@
-#include <stdint.h>
 #define _CRT_SECURE_NO_WARNINGS
 #include <windows.h>
 #include <wingdi.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdint.h>
 
 static HWND window = 0;
 static BITMAPINFO bmInfo = {0};
@@ -11,16 +11,18 @@ static void *bitmap_memory;
 static HBITMAP bitmap_handle;
 static HDC device_context;
 
+static bool running = true;
+
 typedef struct WindowSize
 {
 	int width;
 	int height;
 } WindowSize;
 
-typedef unsigned char uchar;
+typedef unsigned char byte;
 
 //Allocate a back buffer
-static void InitOrResizeDIBSection(int width, int height)
+static void Create_Init_Backbuffer(int width, int height)
 {	
 	if (bitmap_memory)
 	{
@@ -39,6 +41,19 @@ static void InitOrResizeDIBSection(int width, int height)
 	unsigned bytes_per_pixel = 4;
 	size_t memory_size = bytes_per_pixel * width * height;
 	bitmap_memory = VirtualAlloc(0, memory_size, MEM_COMMIT, PAGE_READWRITE);
+
+	byte *row = (byte *)bitmap_memory;
+	int pitch = bytes_per_pixel * width;
+	for (int y = 0; y < height; ++y)
+	{
+		uint32_t* pixel = (uint32_t*) row;
+		for (int x = 0; x < width; ++x)
+		{
+			*pixel++ = 0x000000FF;			
+		}
+
+		row += pitch;
+	}
 }
 
 static WindowSize GetWindowSize()
@@ -59,19 +74,18 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_SIZE:
 		WindowSize wSize = GetWindowSize();
-		InitOrResizeDIBSection(wSize.width, wSize.height);
+		Create_Init_Backbuffer(wSize.width, wSize.height);
 		break;
 
 	case WM_DESTROY:
+		running = false;
 		PostQuitMessage(0);
-		return 0;
-
-	case WM_PAINT:
 		return 0;
 
 	case WM_KEYDOWN:
 		if (wParam == VK_ESCAPE)
 		{
+			running = false;
 			PostQuitMessage(0);
 		}
 		return 0;
@@ -92,10 +106,10 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 	}
 	console_enabled = AttachConsole(ATTACH_PARENT_PROCESS);
 	
-	const char CLASS_NAME[] = "Sample Window Class";
+	const char CLASS_NAME[] = "Multimedia Visualizer";
 
-	WNDCLASS wc;
-	memset(&wc, 0, sizeof(wc));
+	WNDCLASS wc = {0};
+	wc.style = CS_HREDRAW|CS_VREDRAW;
 	wc.lpfnWndProc = WindowProc;
 	wc.hInstance = hInstance;
 	wc.lpszClassName = CLASS_NAME;
@@ -103,31 +117,23 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 	RegisterClass(&wc);
 
 	window = CreateWindowExA(0, CLASS_NAME, "Multimedia Visualizer", WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, NULL, NULL, hInstance, NULL);
+		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
 	if (window == NULL) return -1;
 
 	ShowWindow(window, nCmdSHow);
 
-	WindowSize wSize = GetWindowSize();
+	device_context = GetDC(window);
 	
-	//Create DIB
-	//CreateDIBSection(HDC hdc, const BITMAPINFO *pbmi, UINT usage, void **ppvBits, HANDLE hSection, DWORD offset)
 	MSG msg;
-	while (GetMessage(&msg, NULL, 0, 0) > 0)
+	while (running)
 	{
-		TranslateMessage(&msg);
-		DispatchMessage(&msg);
-
-		for (int row = 0; row < wSize.height; ++row)
+		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
 		{
-			for (int col = 0; col < wSize.width; ++col)
-			{
-				uint32_t *pixel = (uint32_t*)bitmap_memory;	
-				*pixel = 0x00000000;
-				++pixel;
-			}			
+			TranslateMessage(&msg);
+			DispatchMessage(&msg);		
 		}
 
+		WindowSize wSize = GetWindowSize();	
 		StretchDIBits(device_context, //device context
 			0, 0, wSize.width, wSize.height, //destination
 			0, 0, wSize.width, wSize.height, //source
@@ -136,6 +142,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 			DIB_RGB_COLORS,
 			SRCCOPY);
 	}
+	
 
 	if (console_enabled)
 	{
