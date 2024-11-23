@@ -49,7 +49,10 @@ static void Create_Init_Backbuffer(int width, int height)
 		uint32_t* pixel = (uint32_t*) row;
 		for (int x = 0; x < width; ++x)
 		{
-			*pixel++ = 0x000000FF;			
+			//aRGB in little endian machine so 0x000000FF is Blue
+			*pixel++ = 0x000000FF;
+			//*pixel++ = ((x % 255) << 24);
+			//*pixel++ = 0x00FF00FF;
 		}
 
 		row += pitch;
@@ -134,7 +137,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 		}
 
 		WindowSize wSize = GetWindowSize();	
-		StretchDIBits(device_context, //device context
+		StretchDIBits(device_context,
 			0, 0, wSize.width, wSize.height, //destination
 			0, 0, wSize.width, wSize.height, //source
 			bitmap_memory,
@@ -142,7 +145,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 			DIB_RGB_COLORS,
 			SRCCOPY);
 	}
-	
 
 	if (console_enabled)
 	{
