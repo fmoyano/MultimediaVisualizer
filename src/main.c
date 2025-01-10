@@ -4,14 +4,19 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
+#include "img_loader.h"
 
 static HWND window = 0;
 static BITMAPINFO bmInfo = {0};
 static void *bitmap_memory;
-static HBITMAP bitmap_handle;
 static HDC device_context;
 
 static bool running = true;
+
+static int image_width = 0;
+static int image_height = 0;
+static int image_depth = 0;
+static void* rgb_data = 0;
 
 typedef struct WindowSize
 {
@@ -22,28 +27,26 @@ typedef struct WindowSize
 typedef unsigned char byte;
 
 //Allocate a back buffer
-static void Create_Init_Backbuffer(int width, int height)
+static void Create_Init_Backbuffer()
 {	
 	if (bitmap_memory)
 	{
 		VirtualFree(bitmap_memory, 0, MEM_RELEASE);
 	}
 
-	BITMAPINFOHEADER bmHeader = {0};
-	bmHeader.biSize = sizeof(BITMAPINFOHEADER);
-	bmHeader.biWidth = width;
-	bmHeader.biHeight = -height; //top-down bitmap (origin is on the top-left corner)
-	bmHeader.biPlanes = 1;
-	bmHeader.biBitCount = 32;
-	bmHeader.biCompression = BI_RGB;
-	bmInfo.bmiHeader = bmHeader;
-
-	unsigned bytes_per_pixel = 4;
-	size_t memory_size = bytes_per_pixel * width * height;
+	size_t memory_size = 3 * image_width * image_height;
 	bitmap_memory = VirtualAlloc(0, memory_size, MEM_COMMIT, PAGE_READWRITE);
 
-	byte *row = (byte *)bitmap_memory;
-	int pitch = bytes_per_pixel * width;
+	if (rgb_data)
+		memcpy(bitmap_memory, rgb_data, memory_size);
+	/*byte *row = (byte *)bitmap_memory;
+	byte* rgb_data_byte = (byte*) rgb_data;
+	for (int i = 0; i < bytes_per_pixel * image_width * image_height; ++i)
+	{
+		*row++ = *rgb_data_byte++;
+	}*/
+
+	/*int pitch = bytes_per_pixel * width;
 	for (int y = 0; y < height; ++y)
 	{
 		uint32_t* pixel = (uint32_t*) row;
@@ -56,7 +59,7 @@ static void Create_Init_Backbuffer(int width, int height)
 		}
 
 		row += pitch;
-	}
+	}*/
 }
 
 static WindowSize GetWindowSize()
@@ -76,8 +79,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	switch (uMsg)
 	{
 	case WM_SIZE:
-		WindowSize wSize = GetWindowSize();
-		Create_Init_Backbuffer(wSize.width, wSize.height);
+		Create_Init_Backbuffer();
 		break;
 
 	case WM_DESTROY:
@@ -109,7 +111,40 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 	}
 	console_enabled = AttachConsole(ATTACH_PARENT_PROCESS);
 	
+	printf("Command line: %S\n", pCmdLine);
+
+	if (pCmdLine[0] == 0)
+	{
+		printf("Enter filename to visualize\n");
+		//TODO: remove in release
+		pCmdLine = L"data/sample.tga";
+		//return -1;
+	}
+
 	const char CLASS_NAME[] = "Multimedia Visualizer";
+
+	char* file_name = malloc(20);
+	size_t chars_converted = 0;
+	wcstombs_s(&chars_converted, file_name, 20, pCmdLine, 20);
+	printf("File name is %s\n", file_name);
+	image_width = 0, image_height = 0, image_depth = 0;
+
+	BITMAPINFOHEADER bmHeader = {0};
+	rgb_data = img_loader_load(file_name, &image_width, &image_height, &image_depth);
+	if (!rgb_data)
+	{
+		printf("Not valid file\n");
+	}
+	else
+	{
+		bmHeader.biSize = sizeof(BITMAPINFOHEADER);
+		bmHeader.biPlanes = 1;
+		bmHeader.biCompression = BI_RGB;	
+		bmHeader.biWidth = image_width;
+		bmHeader.biHeight = image_height;
+		bmHeader.biBitCount = image_depth;
+		bmInfo.bmiHeader = bmHeader;
+	}
 
 	WNDCLASS wc = {0};
 	wc.style = CS_HREDRAW|CS_VREDRAW;
@@ -121,7 +156,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 
 	window = CreateWindowExA(0, CLASS_NAME, "Multimedia Visualizer", WS_OVERLAPPEDWINDOW,
 		CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, hInstance, 0);
-	if (window == NULL) return -1;
+	if (window == 0) return -1;
 
 	ShowWindow(window, nCmdSHow);
 
@@ -138,8 +173,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 
 		WindowSize wSize = GetWindowSize();	
 		StretchDIBits(device_context,
-			0, 0, wSize.width, wSize.height, //destination
-			0, 0, wSize.width, wSize.height, //source
+			0, 0, image_width, image_height, //destination
+			0, 0, image_width, image_height, //source
 			bitmap_memory,
 			&bmInfo, // BITMAP INFO
 			DIB_RGB_COLORS,
