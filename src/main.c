@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdint.h>
 #include "img_loader.h"
+#include "png_loader.h"
 
 static HWND window = 0;
 static BITMAPINFO bmInfo = {0};
@@ -117,7 +118,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 	{
 		printf("Enter filename to visualize\n");
 		//TODO: remove in release
-		pCmdLine = L"data/sample.tga";
+		pCmdLine = L"data/lion.png";
 		//return -1;
 	}
 
@@ -130,7 +131,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE prevInstance, PWSTR pCmdLine,
 	image_width = 0, image_height = 0, image_depth = 0;
 
 	BITMAPINFOHEADER bmHeader = {0};
-	rgb_data = img_loader_load(file_name, &image_width, &image_height, &image_depth);
+	png_loader_open(file_name);
+	//rgb_data = img_loader_load(file_name, &image_width, &image_height, &image_depth);
 	if (!rgb_data)
 	{
 		printf("Not valid file\n");
