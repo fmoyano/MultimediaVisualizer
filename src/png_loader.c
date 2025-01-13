@@ -15,6 +15,33 @@ typedef struct PNG_Chunk
   unsigned int chunk_CRC;
 } PNG_Chunk;
 
+
+typedef void (*chunk_handler)(const char* const buffer, int len);
+
+typedef struct Handler_Struct
+{
+  char* chunk_type;
+  chunk_handler handler;
+} Handler_Struct;
+
+
+void ihdr_handler(const char* const buffer, int len)
+{
+  printf("Handler for IHDR called!\n");
+}
+
+void end_handler(const char* const buffer, int len)
+{
+  printf("Handler for IEND called!\n");
+}
+
+static Handler_Struct handlers[] =
+{
+  {"IHDR", ihdr_handler},
+  {"IEND", end_handler},
+  {"NULL", 0}
+};
+
 //Changes the order of bytes
 //This is required when reading data that should be interpreted as big-endian
 //on a little-endian machine, or vice-versa
@@ -22,7 +49,7 @@ typedef struct PNG_Chunk
 //and this machine is little endian
 //Although most machines are currently little endian, to make this code portable
 //we should test the endianness of the machine to know whether we must call this function
-unsigned char* fix_endianness(unsigned char* bytes, size_t size)
+static unsigned char* fix_endianness(unsigned char* bytes, size_t size)
 {
   if (size == 1) return bytes;
 
@@ -98,6 +125,14 @@ void* png_loader_open(const char* const filename)
       chunk_type[4] = '\0';
       pos += 4;//sizeof(chunk_type);
       printf("chunk_type: %s\n", chunk_type);
+
+      for (int i = 0; handlers[i].handler != 0; ++i)
+      {
+        if (!strcmp(chunk_type, handlers[i].chunk_type))
+        {
+          handlers[i].handler(0, 0);
+        }
+      }
 
       unsigned char* chunk_data = malloc(length);
       memcpy(chunk_data, &buffer[pos], length);
