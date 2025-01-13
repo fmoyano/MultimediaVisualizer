@@ -4,6 +4,7 @@
 #include <string.h>
 #include <windows.h>
 #include <stdbool.h>
+#include <assert.h>
 
 #define MAX_SIZE 16*1024*1024
 
@@ -15,33 +16,14 @@ typedef struct PNG_Chunk
   unsigned int chunk_CRC;
 } PNG_Chunk;
 
-
-typedef void (*chunk_handler)(const char* const buffer, int len);
-
-typedef struct Handler_Struct
+typedef enum {Greyscale = 0, 
+            Truecolour = 2, IndexedColour, GreyscaleAlpha,
+            TruecolourAlpha = 6} PNG_Colour_Type;
+static const char* colour_type_names[] =
 {
-  char* chunk_type;
-  chunk_handler handler;
-} Handler_Struct;
-
-
-void ihdr_handler(const char* const buffer, int len)
-{
-  printf("Handler for IHDR called!\n");
-}
-
-void end_handler(const char* const buffer, int len)
-{
-  printf("Handler for IEND called!\n");
-}
-
-static Handler_Struct handlers[] =
-{
-  {"IHDR", ihdr_handler},
-  {"IEND", end_handler},
-  {"NULL", 0}
+  "Greyscale", "Unknown", "Truecolour", "IndexedColour",
+  "GreyscaleAlpha", "Unknown", "TruecolourAlpha"
 };
-
 //Changes the order of bytes
 //This is required when reading data that should be interpreted as big-endian
 //on a little-endian machine, or vice-versa
@@ -65,6 +47,86 @@ static unsigned char* fix_endianness(unsigned char* bytes, size_t size)
 
   return result;
 }
+
+typedef void (*chunk_handler)(unsigned char* buffer, int len);
+
+typedef struct Handler_Struct
+{
+  char* chunk_type;
+  chunk_handler handler;
+} Handler_Struct;
+
+
+void ihdr_handler(unsigned char* buffer, int len)
+{  
+  assert(len == 13);
+
+  int width = *(int*)fix_endianness(buffer, 4);
+  int height = *(int*)fix_endianness(buffer + 4, 4);
+  unsigned char bit_depth = *(buffer + 8);
+  unsigned char color_type = *(buffer + 9);
+  unsigned char compression_method = *(buffer + 10);
+  unsigned char filter_method = *(buffer + 11);
+  unsigned char interlace_method = *(buffer + 12);
+
+  printf("\tWidth: %d\n", width);
+  printf("\tHeight: %d\n", height);
+  printf("\tBit depth: %d\n", bit_depth);
+  printf("\tColor type: %s\n", colour_type_names[color_type]);
+  printf("\tCompression method: %d\n", compression_method);
+  printf("\tFilter method: %d\n", filter_method);
+  printf("\tInterlace method: %d\n", interlace_method);
+}
+
+void phys_handler(unsigned char* buffer, int len)
+{
+  (void)len;
+
+  unsigned int pixels_per_unit_x = *(unsigned int*)fix_endianness(buffer, sizeof(unsigned int));
+  unsigned int pixels_per_unit_y = *(unsigned int*)fix_endianness(buffer + 4, sizeof(unsigned int));
+  unsigned char unit_specifier = *(buffer + 5);
+  
+  printf("\tPixels per unit X: %d\n", pixels_per_unit_x);
+  printf("\tPixels per unit Y: %d\n", pixels_per_unit_y);
+  printf("\tUnit specifier: %d\n", unit_specifier);
+}
+
+void itxt_handler(unsigned char* buffer, int len)
+{
+  (void)len;
+
+  char keyword[80];
+  strcpy_s(keyword, sizeof(keyword), (const char*)buffer);
+  buffer += strlen(keyword);
+
+  printf("\tKeyword: %s\n", keyword);
+  //There is more info that we're not currently interested in
+}
+
+void idat_handler(unsigned char* buffer, int len)
+{
+  (void)len;
+  (void)buffer;
+  printf("\tHandler for IDAT called!\n");
+}
+
+void end_handler(unsigned char* buffer, int len)
+{
+  (void)len;
+  (void)buffer;
+
+  printf("\tHandler for IEND called!\n");
+}
+
+static Handler_Struct handlers[] =
+{
+  {"IHDR", ihdr_handler},
+  {"IEND", end_handler},
+  {"pHYs", phys_handler},
+  {"iTXt", itxt_handler},
+  {"IDAT", idat_handler},
+  {"NULL", 0}
+};
 
 static bool validate_signature(unsigned char* bytes)
 {
@@ -126,17 +188,17 @@ void* png_loader_open(const char* const filename)
       pos += 4;//sizeof(chunk_type);
       printf("chunk_type: %s\n", chunk_type);
 
+      unsigned char* chunk_data = malloc(length);
+      memcpy(chunk_data, &buffer[pos], length);
+      pos += length;
+
       for (int i = 0; handlers[i].handler != 0; ++i)
       {
         if (!strcmp(chunk_type, handlers[i].chunk_type))
         {
-          handlers[i].handler(0, 0);
+          handlers[i].handler(chunk_data, length);
         }
       }
-
-      unsigned char* chunk_data = malloc(length);
-      memcpy(chunk_data, &buffer[pos], length);
-      pos += length;
 
       unsigned int chunk_CRC = 0;
       memcpy(&chunk_CRC, &buffer[pos+4], sizeof(chunk_CRC));
