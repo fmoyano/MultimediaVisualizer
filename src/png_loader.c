@@ -83,28 +83,32 @@ void* png_loader_open(const char* const filename)
     int pos = 8;
     printf("Signature valid\n");
 
-    //Read chunks: chunks begins with IHDR and end with IEND
-    unsigned int length = 0;    
-    memcpy(&length, &buffer[pos], sizeof(length)); //TODO: fix endianness
-    length = *(int*)fix_endianness((unsigned char*)&length, sizeof(length));
-    pos += sizeof(length);
-    printf("length: %d\n", length);
+    char chunk_type[5] = {0};
+    while(strcmp(chunk_type, "IEND"))
+    {
+      //Read chunks: chunks begins with IHDR and end with IEND
+      unsigned int length = 0;    
+      memcpy(&length, &buffer[pos], sizeof(length)); //TODO: fix endianness
+      length = *(int*)fix_endianness((unsigned char*)&length, sizeof(length));
+      pos += sizeof(length);
+      printf("length: %d\n", length);
 
-    unsigned int chunk_type = 0;
-    memcpy(&chunk_type, &buffer[pos], sizeof(chunk_type));
-    chunk_type = *(int*)fix_endianness((unsigned char*)&chunk_type, sizeof(chunk_type));
-    pos += sizeof(chunk_type);
-    printf("chunk_type: %d\n", chunk_type);
+      memcpy(chunk_type, &buffer[pos], 4);//sizeof(chunk_type));
+      //chunk_type = *(int*)fix_endianness((unsigned char*)&chunk_type, sizeof(chunk_type));
+      chunk_type[4] = '\0';
+      pos += 4;//sizeof(chunk_type);
+      printf("chunk_type: %s\n", chunk_type);
 
-    unsigned char* chunk_data = malloc(length);
-    memcpy(chunk_data, &buffer[pos], length);
-    pos += length;
+      unsigned char* chunk_data = malloc(length);
+      memcpy(chunk_data, &buffer[pos], length);
+      pos += length;
 
-    unsigned int chunk_CRC = 0;
-    memcpy(&chunk_CRC, &buffer[pos+4], sizeof(chunk_CRC));
-    chunk_CRC = *(int*)fix_endianness((unsigned char*)&chunk_CRC, sizeof(chunk_CRC));
-    pos += sizeof(chunk_CRC);
-    printf("CRC: %d\n", chunk_CRC);
+      unsigned int chunk_CRC = 0;
+      memcpy(&chunk_CRC, &buffer[pos+4], sizeof(chunk_CRC));
+      chunk_CRC = *(int*)fix_endianness((unsigned char*)&chunk_CRC, sizeof(chunk_CRC));
+      pos += sizeof(chunk_CRC);
+      printf("CRC: %d\n", chunk_CRC);
+  }
 
     return 0; //TODO: not sure what we will return
   }
